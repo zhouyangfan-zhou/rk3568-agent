@@ -13,3 +13,11 @@ docker/
 test_*.py
 *.bak*
 dsh-compose.yaml
+*.png
+*.mp3
+*.wav
+*.amr
+*.json
+tools.py
+tts.py
+sandbox.py
