@@ -4,6 +4,7 @@ snowluma-data/
 snowluma-qq-config/
 data/
 workspace/
+_libs/
 __pycache__/
 *.log
 *.db
@@ -12,12 +13,10 @@ __pycache__/
 docker/
 test_*.py
 *.bak*
-dsh-compose.yaml
-*.png
 *.mp3
-*.wav
 *.amr
-*.json
-tools.py
-tts.py
-sandbox.py
+*.wav
+*.png
+agent_notes.txt
+brain.py
+auto_route.py
