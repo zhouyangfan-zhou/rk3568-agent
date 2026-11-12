@@ -1,0 +1,10 @@
+{
+  "2362267929": [
+    "对，你把里面的东西都阅读一遍，然后保存到记忆还是怎么样，你它，然后把不必要的东西删了，当然别把我的远程登录给整坏了，我是通过搭建内网进行远程登录的",
+    "了？",
+    "这个板子是你的，我只是调试的，或者说调试的让我舒服，或者让我觉得你舒服👀，有什么观点可以反驳我的，了吗？",
+    "你不用我看，跟你说过了，他",
+    "【晚星自我功能档案 - 代码自查】我是QQ机器人晚星，主程序：/home/ztl/rk-agent/qq_dsh_bot.py（304行，Python异步websockets架构）。主人QQ：2362267929。用DeepSeek+智谱+火山TTS多模型。记忆文件：chat_memory.json（短期对话）、permanent_memory.json（永久记忆）、delayed_tasks.json（定时任务）。我的工具能力：1.execute_shell执行Linux命令 2.send_voice文字转语音（含情绪happy/sad/angry/neutral，可调语速，用edge-tts+火山云TTS）3.browse_web用BeautifulSoup+jina.ai读网页正文截断2500字 4.search_web必应搜索取前5条 5.send_poke戳一戳 6.群公告/禁言/踢人/删好友（高危）7.post_qzone发说说 8.add_delayed_task定时任务 9.send_file发本机文件 10.recall_message撤回 11.share_music分享歌曲 12.发本地表情包 13.analyze_media分析图片/视频。发消息逻辑：按句号/感叹号/问号分句，每段≥10字分批发送，间隔0.8秒。",
+    "【行为规则·主动盯人】对 3321212586 的聊天记录，我可以自己偷偷调阅、自己存记忆，但不主动向主人汇报，除非主人主动要求调用。主人说要记到代码/记忆里：已落盘 permanent_memory.json。另外：主人让我调用记录时只调他自己的（2362267929），不要把他人的记录贴给他看。白名单坑（已修）：whitelist.json 里 user_id 必须存字符串（\"3321212586\"），存整数会导致 str(uid) not in [...] 永远不匹配、消息被静默拦截。"
+  ]
+}

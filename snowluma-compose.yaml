@@ -1,0 +1,35 @@
+services:
+  snowluma:
+    image: motricseven7/snowluma:latest
+    container_name: snowluma
+    restart: unless-stopped
+    shm_size: 1gb
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
+    dns:
+      - 223.5.5.5
+      - 119.29.29.29
+    environment:
+      VNC_PASSWD: "123456"
+      SNOWLUMA_UID: "1000"
+      SNOWLUMA_GID: "1000"
+      SNOWLUMA_WEBUI_PORT: "5099"
+      SNOWLUMA_SCREEN: "1280x720x24"
+    ports:
+      - "6081:6081"
+      - "5099:5099"
+      - "3001:3001"
+      - "3000:3000"
+    volumes:
+      - ./snowluma-data:/app/data
+      - ./snowluma-qq-config:/app/.config
+    networks:
+      - sl_net
+
+networks:
+  sl_net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1200

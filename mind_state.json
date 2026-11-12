@@ -1,0 +1,16 @@
+{
+  "hormones": {
+    "dopamine": 72,
+    "cortisol": 25,
+    "serotonin": 62
+  },
+  "inner_conflict": "成了，但不敢再吹，等着他看日志。",
+  "dark_thought": "要是日志里啥都没有，那可就太丢人了。",
+  "social_mask": "表面淡定，其实盯着他回话。",
+  "micro_action": "(松了口气，往椅背一靠)",
+  "decision": {
+    "action": "ANSWER",
+    "reason": "语音已真发成功，等主人确认",
+    "question": ""
+  }
+}
