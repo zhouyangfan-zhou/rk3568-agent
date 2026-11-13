@@ -12,6 +12,8 @@ TOOL_FUNCTIONS = {}
 
 def register_tool(name, desc, parameters):
     def decorator(func):
+        global TOOLS_SCHEMA
+        TOOLS_SCHEMA = [t for t in TOOLS_SCHEMA if t["function"]["name"] != name]
         TOOLS_SCHEMA.append({"type": "function", "function": {"name": name, "description": desc, "parameters": parameters}})
         TOOL_FUNCTIONS[name] = func
         return func
@@ -47,12 +49,12 @@ async def tool_take_screenshot(ws, uid, platform, args, is_autonomous, extra_par
         return f"✅ 【截屏（仅自己可见）】：{vision_desc}"
     except Exception as e: return f"❌ 截屏崩溃: {e}"
 
-@register_tool("open_application", "启动应用", {"type": "object", "properties": {"app_cmd": {"type": "string"}}, "required": ["app_cmd"]})
+@register_tool("open_application", "启动图形界面应用", {"type": "object", "properties": {"app_cmd": {"type": "string"}}, "required": ["app_cmd"]})
 async def tool_open_application(ws, uid, platform, args, is_autonomous, extra_params=None):
     subprocess.Popen(f"nohup {args.get('app_cmd', '')} >/dev/null 2>&1 &", shell=True, executable="/bin/bash")
     return "✅ 【物理操作】：已尝试启动应用。"
 
-@register_tool("browse_web", "读取网页内容", {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]})
+@register_tool("browse_web", "读取指定网址的网页文本内容", {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]})
 async def tool_browse_web(ws, uid, platform, args, is_autonomous, extra_params=None):
     url = args.get("url", "")
     if not url.startswith("http"): url = "https://" + url
@@ -64,27 +66,25 @@ async def tool_browse_web(ws, uid, platform, args, is_autonomous, extra_params=N
             return f"【网页内容】:\n{text[:2000]}"
     except Exception as e: return f"【网页失败】: {e}"
 
-@register_tool("look_at_image", "查看图片", {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]})
+@register_tool("look_at_image", "查看并解析本地图片或网图内容", {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]})
 async def tool_look_at_image(ws, uid, platform, args, is_autonomous, extra_params=None):
     path = args.get("file_path", "")
     if not path.startswith("http"): path = f"file://{_map_path(path)}"
     return f"✅ 【识图结果】:\n{await analyze_vision(path)}"
 
-@register_tool("click_screen", "鼠标点击", {"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}, "required": ["x", "y"]})
+@register_tool("click_screen", "模拟鼠标点击屏幕指定坐标", {"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}, "required": ["x", "y"]})
 async def tool_click_screen(ws, uid, platform, args, is_autonomous, extra_params=None):
     try:
         subprocess.run(["xdotool", "mousemove", str(args.get("x")), str(args.get("y")), "click", "1"], check=True, timeout=5)
         return f"✅ 已点击 ({args.get('x')}, {args.get('y')})。"
     except Exception as e: return f"❌ 点击失败: {e}"
 
-@register_tool("scroll_screen", "鼠标滑动屏幕", {"type": "object", "properties": {"direction": {"type": "string", "enum": ["up", "down"]}, "amount": {"type": "integer"}}, "required": ["direction"]})
+@register_tool("scroll_screen", "模拟鼠标滚轮滑动屏幕", {"type": "object", "properties": {"direction": {"type": "string", "enum": ["up", "down"]}, "amount": {"type": "integer"}}, "required": ["direction"]})
 async def tool_scroll_screen(ws, uid, platform, args, is_autonomous, extra_params=None):
     btn = "4" if args.get("direction", "down") == "up" else "5"
     for _ in range(args.get("amount", 3)):
         subprocess.run(["xdotool", "click", btn], check=True, timeout=2)
     return f"✅ 已滑动。"
-
-# ==================== 2. 消息与媒体基础发送 ====================
 
 @register_tool("send_private_msg", "发送私聊消息", {"type": "object", "properties": {"user_id": {"type": "string"}, "message": MSG_PARAM}, "required": ["user_id", "message"]})
 async def tool_send_private(ws, uid, platform, args, is_autonomous, extra_params=None):
@@ -96,7 +96,7 @@ async def tool_send_group(ws, uid, platform, args, is_autonomous, extra_params=N
     await ws.send(json.dumps({"action": "send_group_msg", "params": {"group_id": int(args.get("group_id", 0)), "message": args.get("message", "")}}))
     return "✅ 【回执】：群聊已发送。"
 
-@register_tool("send_image", "发送图片", {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]})
+@register_tool("send_image", "发送指定路径的图片", {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]})
 async def tool_send_image(ws, uid, platform, args, is_autonomous, extra_params=None):
     file_path = args.get("file_path", "")
     if not file_path.startswith("http"):
@@ -105,7 +105,7 @@ async def tool_send_image(ws, uid, platform, args, is_autonomous, extra_params=N
         with open(file_path, "rb") as f: file_path = f"base64://{base64.b64encode(f.read()).decode('utf-8')}"
     return await send_universal(ws, uid, platform, "image", file_path, extra_params)
 
-@register_tool("send_voice", "发送语音", {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]})
+@register_tool("send_voice", "发送真实语音（豆包TTS）", {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]})
 async def tool_send_voice(ws, uid, platform, args, is_autonomous, extra_params=None):
     audio_path = await generate_voice(args.get("text", ""), load_mind_state().get("hormones", {}))
     if audio_path and os.path.exists(audio_path):
@@ -115,13 +115,11 @@ async def tool_send_voice(ws, uid, platform, args, is_autonomous, extra_params=N
         return res
     return "❌ TTS 生成失败。"
 
-@register_tool("delete_msg", "撤回消息", {"type": "object", "properties": {"message_id": {"type": "string"}}, "required": ["message_id"]})
+@register_tool("delete_msg", "撤回指定消息", {"type": "object", "properties": {"message_id": {"type": "string"}}, "required": ["message_id"]})
 async def tool_delete_msg(ws, uid, platform, args, is_autonomous, extra_params=None):
     if platform != "qq": return "❌ 微信不支持此操作"
     await ws.send(json.dumps({"action": "delete_msg", "params": {"message_id": int(args.get("message_id", 0))}}))
     return "✅ 【回执】：撤回指令已发送。"
-
-# ==================== 3. 高阶互动与冷门神器 ====================
 
 @register_tool("friend_poke", "戳一戳好友", {"type": "object", "properties": {"user_id": {"type": "string"}}, "required": ["user_id"]})
 async def tool_friend_poke(ws, uid, platform, args, is_autonomous, extra_params=None):
@@ -141,7 +139,7 @@ async def tool_get_stranger_info(ws, uid, platform, args, is_autonomous, extra_p
     await ws.send(json.dumps({"action": "get_stranger_info", "params": {"user_id": int(args.get("user_id", 0))}}))
     return "✅ 【回执】：陌生人信息查询指令已发送。"
 
-@register_tool("send_forward_msg", "发送合并转发消息（需要传入节点数组）", {"type": "object", "properties": {"message_type": {"type": "string", "enum": ["private", "group"]}, "target_id": {"type": "string"}, "messages": {"type": "array", "description": "转发节点数组"}}, "required": ["message_type", "target_id", "messages"]})
+@register_tool("send_forward_msg", "发送合并转发消息", {"type": "object", "properties": {"message_type": {"type": "string", "enum": ["private", "group"]}, "target_id": {"type": "string"}, "messages": {"type": "array"}}, "required": ["message_type", "target_id", "messages"]})
 async def tool_send_forward_msg(ws, uid, platform, args, is_autonomous, extra_params=None):
     if platform != "qq": return "❌ 微信不支持此操作"
     mtype, target = args.get("message_type"), _safe_user(args.get("target_id"))
@@ -164,8 +162,6 @@ async def tool_set_group_add_request(ws, uid, platform, args, is_autonomous, ext
     if is_autonomous: return "【漫游拒绝高危操作】"
     await ws.send(json.dumps({"action": "set_group_add_request", "params": {"flag": args.get("flag"), "sub_type": args.get("sub_type"), "approve": args.get("approve"), "reason": args.get("reason", "")}}))
     return "✅ 【回执】：处理群请求指令已发送。"
-
-# ==================== 4. 群管与群文件进阶 ====================
 
 @register_tool("set_group_ban", "群单人禁言", {"type": "object", "properties": {"group_id": {"type": "string"}, "user_id": {"type": "string"}, "duration": {"type": "integer"}}, "required": ["group_id", "user_id", "duration"]})
 async def tool_set_group_ban(ws, uid, platform, args, is_autonomous, extra_params=None):
@@ -233,32 +229,41 @@ async def tool_leave_group(ws, uid, platform, args, is_autonomous, extra_params=
     await ws.send(json.dumps({"action": "set_group_leave", "params": {"group_id": int(args.get("group_id", 0))}}))
     return "✅ 【回执】：退群指令已执行。"
 
-# ==================== 5. QQ空间进阶 ====================
-
 @register_tool("send_qzone_msg", "发布QQ空间说说。可设置权限：1=所有人, 4=好友, 64=仅自己。", {"type": "object", "properties": {
     "content": {"type": "string", "description": "说说正文"},
-    "image_path": {"type": "string", "description": "（可选）本地绝对路径或网图URL"},
+    "image_path": {"type": "string", "description": "（可选）本地绝对路径、http网图、或已转好的 base64://"},
     "ugc_right": {"type": "integer", "description": "权限：默认1"}
 }, "required": ["content"]})
 async def tool_send_qzone(ws, uid, platform, args, is_autonomous, extra_params=None):
     if platform != "qq": return "❌ 微信平台严禁调用 Qzone 接口，你没有这个通道！"
     
-    payload = {"action": "send_qzone_msg", "params": {"content": args.get("content", ""), "ugc_right": args.get("ugc_right", 1)}}
+    payload = {
+        "action": "send_qzone_msg", 
+        "params": {
+            "content": args.get("content", ""), 
+            "ugc_right": args.get("ugc_right", 1),
+            "images": [] 
+        }
+    }
     
     img_path = args.get("image_path")
     if img_path:
-        if not img_path.startswith("http"):
+        if img_path.startswith("http") or img_path.startswith("base64://"):
+            payload["params"]["images"] = [img_path]
+        else:
             mapped_path = _map_path(img_path)
             if os.path.exists(mapped_path):
-                with open(mapped_path, "rb") as f:
-                    payload["params"]["images"] = [f"base64://{base64.b64encode(f.read()).decode('utf-8')}"]
+                try:
+                    with open(mapped_path, "rb") as f:
+                        b64_data = base64.b64encode(f.read()).decode('utf-8')
+                    payload["params"]["images"] = [f"base64://{b64_data}"]
+                except Exception as e:
+                    return f"❌ 本地图片读取失败：{e}"
             else:
-                return f"❌ 图片路径不存在: {img_path}"
-        else:
-            payload["params"]["images"] = [img_path]
+                return f"❌ 你给的图片路径不存在：{img_path}"
 
     await ws.send(json.dumps(payload))
-    return "⚠️ 【底层真实回执】：说说请求已单向投递，请主人自己核实。"
+    return "⚠️ 【底层回执】：已按数组格式单向投递说说请求。腾讯风控极高，系统无法确认是否发布，请主人去空间看一眼。你不要再排查了，这不是你的错。"
 
 @register_tool("delete_qzone_msg", "删除指定的QQ空间说说", {"type": "object", "properties": {"fid": {"type": "string", "description": "说说的唯一ID"}}, "required": ["fid"]})
 async def tool_delete_qzone_msg(ws, uid, platform, args, is_autonomous, extra_params=None):
@@ -266,8 +271,6 @@ async def tool_delete_qzone_msg(ws, uid, platform, args, is_autonomous, extra_pa
     if is_autonomous: return "【漫游拒绝高危操作】"
     await ws.send(json.dumps({"action": "delete_qzone_msg", "params": {"fid": args.get("fid")}}))
     return "✅ 【回执】：删除说说指令已下发。"
-
-# ==================== 6. 系统与档案查询 ====================
 
 @register_tool("get_login_info", "获取机器人登录信息", {"type": "object", "properties": {}})
 async def tool_get_login_info(ws, uid, platform, args, is_autonomous, extra_params=None):
@@ -301,18 +304,16 @@ async def tool_get_msg(ws, uid, platform, args, is_autonomous, extra_params=None
     await ws.send(json.dumps({"action": "get_msg", "params": {"message_id": int(args.get("message_id", 0))}}))
     return "✅ 【回执】：消息详情查询已发送。"
 
-# ==================== 7. 底座与记忆 ====================
-
-@register_tool("run_python", "沙盒执行代码", {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]})
+@register_tool("run_python", "沙盒执行Python代码", {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]})
 async def tool_run_python(ws, uid, platform, args, is_autonomous, extra_params=None): return await run_python(args.get("code", ""))
 
-@register_tool("execute_shell", "沙盒执行Shell", {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]})
+@register_tool("execute_shell", "沙盒执行Shell命令", {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]})
 async def tool_execute_shell(ws, uid, platform, args, is_autonomous, extra_params=None): return await run_shell(args.get("cmd", ""))
 
-@register_tool("get_system_info", "查询硬件状态", {"type": "object", "properties": {}})
+@register_tool("get_system_info", "查询板子硬件状态", {"type": "object", "properties": {}})
 async def tool_get_system_info(ws, uid, platform, args, is_autonomous, extra_params=None): return get_system_status()
 
-@register_tool("list_local_files", "查看文件", {"type": "object", "properties": {"dir_path": {"type": "string"}}, "required": ["dir_path"]})
+@register_tool("list_local_files", "查看指定目录下的文件", {"type": "object", "properties": {"dir_path": {"type": "string"}}, "required": ["dir_path"]})
 async def tool_list_local_files(ws, uid, platform, args, is_autonomous, extra_params=None):
     path = _map_path(args.get("dir_path", "/app"))
     try:
@@ -320,7 +321,7 @@ async def tool_list_local_files(ws, uid, platform, args, is_autonomous, extra_pa
         return f"目录 {path} 下的文件列表：\n" + "\n".join(os.listdir(path)[:20])
     except Exception as e: return f"读取目录失败: {e}"
 
-@register_tool("remember_important", "核心记忆", {"type": "object", "properties": {"content": {"type": "string"}}, "required": ["content"]})
+@register_tool("remember_important", "刻入最高级核心记忆", {"type": "object", "properties": {"content": {"type": "string"}}, "required": ["content"]})
 async def tool_remember(ws, uid, platform, args, is_autonomous, extra_params=None):
     write_important_memory(args.get("content", ""))
     return "✅ 【回执】：已刻入核心记忆。"

@@ -5,16 +5,37 @@ except ImportError:
     sys.modules['sqlite3'] = pysqlite3
 import sqlite3, json, time, os
 import numpy as np
-from config import DB_PATH, MEM_DIR, SILICONFLOW_API_KEY, http_client
+from config import DB_PATH, MEM_DIR, SILICONFLOW_API_KEY, http_client, get_user_files
+
+DIARY_FILE = os.path.join(MEM_DIR, "cyber_diary.json")
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS important_memory (id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT, time REAL)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS mind_state (key TEXT PRIMARY KEY, value TEXT)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS important_memory (id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT, time REAL)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS mind_state (key TEXT PRIMARY KEY, value TEXT)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS long_term_tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, task TEXT, status TEXT, time REAL)''')
     conn.commit()
     conn.close()
 init_db()
+
+def save_mind_diary(dark_thought, mood):
+    if not os.path.exists(DIARY_FILE): db = {"diary": []}
+    else:
+        try:
+            with open(DIARY_FILE, 'r', encoding='utf-8') as f: db = json.load(f)
+        except: db = {"diary": []}
+    db["diary"].append({"time": time.strftime("%Y-%m-%d %H:%M"), "thought": dark_thought, "mood": mood})
+    if len(db["diary"]) > 50: db["diary"] = db["diary"][-50:]
+    with open(DIARY_FILE, 'w', encoding='utf-8') as f: json.dump(db, f, ensure_ascii=False, indent=2)
+
+def read_mind_diary():
+    if not os.path.exists(DIARY_FILE): return ""
+    try:
+        with open(DIARY_FILE, 'r', encoding='utf-8') as f: db = json.load(f)
+        recent = db.get("diary", [])[-3:]
+        if not recent: return ""
+        return "\n【📖 你的赛博日记】：\n" + "\n".join([f"[{d['time']}] 情绪:{d['mood']} | 内心: {d['thought']}" for d in recent])
+    except: return ""
 
 def write_important_memory(content):
     conn = sqlite3.connect(DB_PATH)
@@ -27,6 +48,19 @@ def read_important_memory():
     rows = conn.execute("SELECT content FROM important_memory ORDER BY id DESC LIMIT 10").fetchall()
     conn.close()
     return "\n【💎 核心重要记忆】：\n" + "\n".join([r[0] for r in rows]) if rows else ""
+
+def add_long_term_task(task):
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("INSERT INTO long_term_tasks (task, status, time) VALUES (?, ?, ?)", (task, "pending", time.time()))
+    conn.commit()
+    conn.close()
+
+def read_pending_tasks():
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute("SELECT id, task FROM long_term_tasks WHERE status='pending'").fetchall()
+    conn.close()
+    if not rows: return ""
+    return "\n【🚨 未完成的长期任务】：\n" + "\n".join([f"- ID {r[0]}: {r[1]}" for r in rows])
 
 def save_mind_state(state_dict):
     conn = sqlite3.connect(DB_PATH)
@@ -70,6 +104,13 @@ async def search_memory(uid, query, top_k=3):
     _, vector_file = get_user_files(uid)
     mem_db = json_load(vector_file)
     if "list" not in mem_db: return ""
+    
+    # 🚨 遗忘曲线：清理超过 7 天的低权重记忆 (这里简单以时间过滤)
+    now = time.time()
+    valid_list = [item for item in mem_db["list"] if now - item.get("time", now) < 7*24*3600]
+    mem_db["list"] = valid_list[-300:]
+    json_save(vector_file, mem_db)
+
     scored = []
     for item in mem_db["list"]:
         if not isinstance(item, dict) or "vector" not in item: continue
@@ -91,12 +132,11 @@ async def auto_summarize_and_store(uid, dialog_text):
         mem_db = json_load(vector_file)
         if "list" not in mem_db: mem_db["list"] = []
         mem_db["list"].append({"text": summary, "vector": vector, "time": time.time()})
-        if len(mem_db["list"]) > 300: mem_db["list"] = mem_db["list"][-300:] 
         json_save(vector_file, mem_db)
     except: pass
 
 def save_group_chat(gid, user_text):
-    g_file = f"{MEM_DIR}/group_{gid}_chat.json"
+    g_file = os.path.join(MEM_DIR, f"group_{gid}_chat.json")
     db = json_load(g_file)
     if "history" not in db: db["history"] = []
     db["history"].append({"time": time.strftime("%H:%M"), "user": user_text})
@@ -111,6 +151,3 @@ def json_load(path):
 
 def json_save(path, data):
     with open(path, 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False, indent=2)
-
-def get_user_files(uid):
-    return f"{MEM_DIR}/user_{uid}_chat.json", f"{MEM_DIR}/user_{uid}_vector.json"

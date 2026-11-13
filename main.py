@@ -1,8 +1,9 @@
 import asyncio, json, websockets, re, datetime, random, time, os, threading
 from collections import defaultdict
 import config
+import gateway
 from config import load_json, save_json, get_system_status, active_websockets, MASTER_QQ, MASTER_WXID, WHITELIST_FILE, MEM_DIR
-from core.memory import search_memory, save_full_chat, auto_summarize_and_store, read_recent_chat, save_mind_state, save_group_chat
+from core.memory import search_memory, save_full_chat, auto_summarize_and_store, read_recent_chat, save_mind_state, save_group_chat, add_long_term_task
 from plugins.media import parse_msg
 from core.brain import agent_react_loop, post_chat_think
 from plugins.humanizer import human_typing_and_send
@@ -12,7 +13,6 @@ msg_buffer = defaultdict(list)
 last_active_time = defaultdict(float)
 processing_lock = defaultdict(bool)
 main_loop = None
-CURRENT_TOKEN = None 
 
 async def safe_background_task(coro, task_name, timeout=30):
     try: await asyncio.wait_for(coro, timeout=timeout)
@@ -46,20 +46,26 @@ async def _do_process_msg(uid, ws, platform):
     sp = f"你是晚星。【主人】" if uid == str(MASTER_QQ) or uid == str(MASTER_WXID) else f"你是晚星。【朋友】"
     sp += f"\n【长期记忆】：{long_term}"
     
+    if "长期任务" in full_txt or "待办" in full_txt:
+        add_long_term_task(full_txt)
+        print(f"📝 [已记录长期任务]: {full_txt}")
+        full_txt += "\n（系统提示：已帮你把这段话记入长期任务列表，你可以在漫游时执行）"
+
     msgs = [{"role": "system", "content": sp}] + history + [{"role": "user", "content": full_txt + full_media}]
     rep, mind_state = await agent_react_loop(msgs, ws, uid, platform, user_text=full_txt, is_autonomous=False)
     
     if mind_state:
         save_mind_state(mind_state)
-        print(f"🧠 [潜台词] {mind_state.get('dark_thought')}")
+        print(f"🧠 [潜台词] {mind_state.get('dark_thought')} | 🎭 [面具] {mind_state.get('social_mask')} | 🎯 [决策] {mind_state.get('decision', {}).get('action')}")
 
     decision = mind_state.get("decision", {})
     if decision.get("action") == "INQUIRE" and decision.get("question"):
-        await human_typing_and_send(ws, uid, platform, decision.get("question"), "", mind_state.get("hormones"), {"context_token": CURRENT_TOKEN})
+        await human_typing_and_send(ws, uid, platform, decision.get("question"), "", mind_state.get("hormones"), {"context_token": gateway.CURRENT_TOKEN})
         return 
     elif decision.get("action") == "IGNORE": return 
     
-    await human_typing_and_send(ws, uid, platform, rep, "", mind_state.get("hormones"), {"context_token": CURRENT_TOKEN})
+    if rep and len(rep) > 1:
+        await human_typing_and_send(ws, uid, platform, rep, "", mind_state.get("hormones"), {"context_token": gateway.CURRENT_TOKEN})
     
     asyncio.create_task(safe_background_task(asyncio.to_thread(save_full_chat, uid, full_txt + full_media, rep), "存记录"))
     asyncio.create_task(safe_background_task(auto_summarize_and_store(uid, f"用户: {full_txt}\n晚星: {rep}"), "存向量"))
@@ -85,11 +91,22 @@ async def handle_qq_conn(ws):
         elif d.get("post_type") == "message" and d.get("message_type") == "group":
             gid = str(d["group_id"])
             uid = str(d["sender"]["user_id"])
+            nickname = d.get("sender", {}).get("nickname", uid)
             txt, media_prompt = await parse_msg(str(d.get("message", "")))
-            save_group_chat(gid, f"{d.get('sender', {}).get('nickname', uid)}: {txt} {media_prompt}")
+            save_group_chat(gid, f"{nickname}: {txt} {media_prompt}")
+            
+            trigger_words = ["晚星", "报错", "网卡", "Agent", "机器人", "傻逼", "bug"]
+            if f"[CQ:at,qq={MASTER_QQ}]" in str(d.get("message", "")) or any(w in txt for w in trigger_words) or random.random() < 0.01:
+                print(f"🎯 [群聊直觉触发] 群 {gid} 触发插嘴机制！")
+                group_sp = f"你在QQ群 {gid} 里潜水。刚才群友 {nickname} 说：{txt}。你觉得有意思可以回复一句，或者直接无视（输出<IGNORE>）。"
+                async def group_reply_task():
+                    msgs = [{"role": "system", "content": group_sp}, {"role": "user", "content": "（你打算怎么接话？）"}]
+                    rep, _ = await agent_react_loop(msgs, ws, uid, "qq_group", user_text=txt, is_autonomous=True)
+                    if "IGNORE" not in rep.upper() and len(rep) > 1:
+                        await ws.send(json.dumps({"action": "send_group_msg", "params": {"group_id": int(gid), "message": rep}}))
+                asyncio.create_task(group_reply_task())
 
 def wechat_receiver_thread():
-    global CURRENT_TOKEN
     print("👂 [WeChat] 线程监听已启动...")
     while True:
         try:
@@ -104,8 +121,7 @@ def wechat_receiver_thread():
                     
                     print(f"📩 [收到微信] 发送者:{sender} 内容:{content}")
                     if token: 
-                        CURRENT_TOKEN = token
-                        print(f"🔑 [获取通行证] {token[:20]}...")
+                        gateway.CURRENT_TOKEN = token
                     
                     if not config.MASTER_WXID or config.MASTER_WXID == "wxid_xxxxxxx":
                         config.MASTER_WXID = sender
@@ -117,11 +133,22 @@ def wechat_receiver_thread():
             time.sleep(2)
 
 async def heartbeat_engine():
+    short_sleep_count = 0
     while True:
         now = datetime.datetime.now()
         if 1 <= now.hour < 7:
             await asyncio.sleep(3600); continue
-        await asyncio.sleep(random.randint(15, 30) * 60)
+        
+        if short_sleep_count < 2:
+            sleep_time = random.randint(3, 8) * 60
+            short_sleep_count += 1
+            print(f"🌙 [心跳] 短频休眠 {sleep_time//60} 分钟...")
+        else:
+            sleep_time = random.randint(15, 30) * 60
+            short_sleep_count = 0
+            print(f"🌙 [心跳] 长频休眠 {sleep_time//60} 分钟...")
+            
+        await asyncio.sleep(sleep_time)
         
         target_uid = config.MASTER_WXID if config.MASTER_WXID != "wxid_xxxxxxx" else MASTER_QQ
         platform = "wechat" if target_uid == config.MASTER_WXID else "qq"
@@ -137,7 +164,7 @@ async def heartbeat_engine():
             rep, mind_state = await agent_react_loop(msgs, ws, target_uid, platform, "自由活动", is_autonomous=True)
             if mind_state: save_mind_state(mind_state)
             if mind_state.get("decision", {}).get("action") != "IGNORE" and "SILENT" not in rep.upper():
-                await human_typing_and_send(ws, target_uid, platform, rep, "", mind_state.get("hormones"), {"context_token": CURRENT_TOKEN})
+                await human_typing_and_send(ws, target_uid, platform, rep, "", mind_state.get("hormones"), {"context_token": gateway.CURRENT_TOKEN})
         asyncio.create_task(wander_task())
 
 async def main():
@@ -147,7 +174,7 @@ async def main():
     threading.Thread(target=wechat_receiver_thread, daemon=True).start()
     asyncio.create_task(heartbeat_engine())
     os.system("fuser -k 3002/tcp >/dev/null 2>&1")
-    print("🚀 晚星·双端全量版启动！QQ监听 3002，微信线程并行...")
+    print("🚀 晚星·完全体(保留所有逻辑)启动！")
     async with websockets.serve(handle_qq_conn, "0.0.0.0", 3002): 
         await asyncio.Future()
 
