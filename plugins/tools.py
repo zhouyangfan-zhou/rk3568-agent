@@ -84,7 +84,7 @@ async def tool_scroll_screen(ws, uid, platform, args, is_autonomous, extra_param
         subprocess.run(["xdotool", "click", btn], check=True, timeout=2)
     return f"✅ 已滑动。"
 
-# ==================== 2. 消息与媒体发送 ====================
+# ==================== 2. 消息与媒体基础发送 ====================
 
 @register_tool("send_private_msg", "发送私聊消息", {"type": "object", "properties": {"user_id": {"type": "string"}, "message": MSG_PARAM}, "required": ["user_id", "message"]})
 async def tool_send_private(ws, uid, platform, args, is_autonomous, extra_params=None):
@@ -95,16 +95,6 @@ async def tool_send_group(ws, uid, platform, args, is_autonomous, extra_params=N
     if platform != "qq": return "❌ 微信不支持此操作"
     await ws.send(json.dumps({"action": "send_group_msg", "params": {"group_id": int(args.get("group_id", 0)), "message": args.get("message", "")}}))
     return "✅ 【回执】：群聊已发送。"
-
-@register_tool("send_msg", "通用发送（自动识别群或私）", {"type": "object", "properties": {"message_type": {"type": "string", "enum": ["private", "group"]}, "target_id": {"type": "string"}, "message": MSG_PARAM}, "required": ["message_type", "target_id", "message"]})
-async def tool_send_msg(ws, uid, platform, args, is_autonomous, extra_params=None):
-    if platform != "qq": return "❌ 微信请使用 send_private_msg"
-    mtype, target = args.get("message_type"), _safe_user(args.get("target_id"))
-    payload = {"action": "send_msg", "params": {"message_type": mtype, "message": args.get("message", "")}}
-    if mtype == "private": payload["params"]["user_id"] = int(target)
-    else: payload["params"]["group_id"] = int(target)
-    await ws.send(json.dumps(payload))
-    return "✅ 【回执】：通用消息已发送。"
 
 @register_tool("send_image", "发送图片", {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]})
 async def tool_send_image(ws, uid, platform, args, is_autonomous, extra_params=None):
@@ -131,27 +121,7 @@ async def tool_delete_msg(ws, uid, platform, args, is_autonomous, extra_params=N
     await ws.send(json.dumps({"action": "delete_msg", "params": {"message_id": int(args.get("message_id", 0))}}))
     return "✅ 【回执】：撤回指令已发送。"
 
-@register_tool("upload_group_file", "上传文件到群聊", {"type": "object", "properties": {"group_id": {"type": "string"}, "file_path": {"type": "string"}, "name": {"type": "string"}}, "required": ["group_id", "file_path", "name"]})
-async def tool_upload_group_file(ws, uid, platform, args, is_autonomous, extra_params=None):
-    if platform != "qq": return "❌ 微信不支持此操作"
-    file_path = _map_path(args.get("file_path", ""))
-    await ws.send(json.dumps({"action": "upload_group_file", "params": {"group_id": int(args.get("group_id", 0)), "file": file_path, "name": args.get("name", "")}}))
-    return "✅ 【回执】：群文件上传指令已发送。"
-
-@register_tool("send_qzone_msg", "发布QQ空间说说（文字+图）", {"type": "object", "properties": {"content": {"type": "string"}, "image_path": {"type": "string"}}, "required": ["content"]})
-async def tool_send_qzone(ws, uid, platform, args, is_autonomous, extra_params=None):
-    if platform != "qq": return "❌ 微信不支持 Qzone"
-    msg = []
-    if args.get("content"): msg.append({"type": "text", "data": {"text": args.get("content")}})
-    if args.get("image_path"): msg.append({"type": "image", "data": {"file": f"file://{_map_path(args.get('image_path'))}"}})
-    await ws.send(json.dumps({"action": "send_qzone_msg", "params": {"message": msg}}))
-    return "✅ 【回执】：说说已发布。"
-
-@register_tool("send_like", "给好友点赞", {"type": "object", "properties": {"user_id": {"type": "string"}, "times": {"type": "integer"}}, "required": ["user_id"]})
-async def tool_send_like(ws, uid, platform, args, is_autonomous, extra_params=None):
-    if platform != "qq": return "❌ 微信不支持此操作"
-    await ws.send(json.dumps({"action": "send_like", "params": {"user_id": int(_safe_user(args.get("user_id"))), "times": args.get("times", 1)}}))
-    return "✅ 【回执】：赞已点。"
+# ==================== 3. 高阶互动与冷门神器 ====================
 
 @register_tool("friend_poke", "戳一戳好友", {"type": "object", "properties": {"user_id": {"type": "string"}}, "required": ["user_id"]})
 async def tool_friend_poke(ws, uid, platform, args, is_autonomous, extra_params=None):
@@ -159,80 +129,52 @@ async def tool_friend_poke(ws, uid, platform, args, is_autonomous, extra_params=
     await ws.send(json.dumps({"action": "friend_poke", "params": {"user_id": int(_safe_user(args.get("user_id")))}}))
     return "✅ 【回执】：已戳一戳。"
 
-# ==================== 3. 群管与查询 ====================
-
-@register_tool("group_poke", "群内戳一戳", {"type": "object", "properties": {"group_id": {"type": "string"}, "user_id": {"type": "string"}}, "required": ["group_id", "user_id"]})
-async def tool_group_poke(ws, uid, platform, args, is_autonomous, extra_params=None):
+@register_tool("send_like", "给好友名片点赞", {"type": "object", "properties": {"user_id": {"type": "string"}, "times": {"type": "integer"}}, "required": ["user_id"]})
+async def tool_send_like(ws, uid, platform, args, is_autonomous, extra_params=None):
     if platform != "qq": return "❌ 微信不支持此操作"
-    await ws.send(json.dumps({"action": "group_poke", "params": {"group_id": int(args.get("group_id", 0)), "user_id": int(args.get("user_id", 0))}}))
-    return "✅ 【回执】：群戳一戳已发送。"
+    await ws.send(json.dumps({"action": "send_like", "params": {"user_id": int(_safe_user(args.get("user_id"))), "times": args.get("times", 1)}}))
+    return "✅ 【回执】：赞已点。"
 
-@register_tool("set_msg_emoji_like", "给消息贴表情回应", {"type": "object", "properties": {"message_id": {"type": "string"}, "emoji_id": {"type": "string"}}, "required": ["message_id", "emoji_id"]})
-async def tool_set_emoji_like(ws, uid, platform, args, is_autonomous, extra_params=None):
+@register_tool("get_stranger_info", "获取陌生人信息", {"type": "object", "properties": {"user_id": {"type": "string"}}, "required": ["user_id"]})
+async def tool_get_stranger_info(ws, uid, platform, args, is_autonomous, extra_params=None):
     if platform != "qq": return "❌ 微信不支持此操作"
-    await ws.send(json.dumps({"action": "set_msg_emoji_like", "params": {"message_id": int(args.get("message_id", 0)), "emoji_id": args.get("emoji_id", "")}}))
-    return "✅ 【回执】：表情回应已发送。"
+    await ws.send(json.dumps({"action": "get_stranger_info", "params": {"user_id": int(args.get("user_id", 0))}}))
+    return "✅ 【回执】：陌生人信息查询指令已发送。"
 
-@register_tool("mark_msg_as_read", "设置消息已读", {"type": "object", "properties": {"message_id": {"type": "string"}}, "required": ["message_id"]})
-async def tool_mark_msg_as_read(ws, uid, platform, args, is_autonomous, extra_params=None):
+@register_tool("send_forward_msg", "发送合并转发消息（需要传入节点数组）", {"type": "object", "properties": {"message_type": {"type": "string", "enum": ["private", "group"]}, "target_id": {"type": "string"}, "messages": {"type": "array", "description": "转发节点数组"}}, "required": ["message_type", "target_id", "messages"]})
+async def tool_send_forward_msg(ws, uid, platform, args, is_autonomous, extra_params=None):
     if platform != "qq": return "❌ 微信不支持此操作"
-    await ws.send(json.dumps({"action": "mark_msg_as_read", "params": {"message_id": int(args.get("message_id", 0))}}))
-    return "✅ 【回执】：已标记已读。"
+    mtype, target = args.get("message_type"), _safe_user(args.get("target_id"))
+    payload = {"action": "send_forward_msg", "params": {"message_type": mtype, "messages": args.get("messages", [])}}
+    if mtype == "private": payload["params"]["user_id"] = int(target)
+    else: payload["params"]["group_id"] = int(target)
+    await ws.send(json.dumps(payload))
+    return "✅ 【回执】：合并转发指令已发送。"
 
-@register_tool("get_login_info", "获取登录信息", {"type": "object", "properties": {}})
-async def tool_get_login_info(ws, uid, platform, args, is_autonomous, extra_params=None):
+@register_tool("set_friend_add_request", "处理加好友请求", {"type": "object", "properties": {"flag": {"type": "string"}, "approve": {"type": "boolean"}, "remark": {"type": "string"}}, "required": ["flag", "approve"]})
+async def tool_set_friend_add_request(ws, uid, platform, args, is_autonomous, extra_params=None):
     if platform != "qq": return "❌ 微信不支持此操作"
-    await ws.send(json.dumps({"action": "get_login_info", "params": {}}))
-    return "✅ 【回执】：查询指令已发送。"
+    if is_autonomous: return "【漫游拒绝高危操作】"
+    await ws.send(json.dumps({"action": "set_friend_add_request", "params": {"flag": args.get("flag"), "approve": args.get("approve"), "remark": args.get("remark", "")}}))
+    return "✅ 【回执】：处理好友请求指令已发送。"
 
-@register_tool("get_friend_list", "获取好友列表", {"type": "object", "properties": {}})
-async def tool_get_friend_list(ws, uid, platform, args, is_autonomous, extra_params=None):
+@register_tool("set_group_add_request", "处理加群/邀请请求", {"type": "object", "properties": {"flag": {"type": "string"}, "sub_type": {"type": "string"}, "approve": {"type": "boolean"}, "reason": {"type": "string"}}, "required": ["flag", "sub_type", "approve"]})
+async def tool_set_group_add_request(ws, uid, platform, args, is_autonomous, extra_params=None):
     if platform != "qq": return "❌ 微信不支持此操作"
-    if uid != str(MASTER_QQ): return "【拦截】：仅主人可查。"
-    await ws.send(json.dumps({"action": "get_friend_list", "params": {}}))
-    return "✅ 【回执】：查询指令已发送。"
+    if is_autonomous: return "【漫游拒绝高危操作】"
+    await ws.send(json.dumps({"action": "set_group_add_request", "params": {"flag": args.get("flag"), "sub_type": args.get("sub_type"), "approve": args.get("approve"), "reason": args.get("reason", "")}}))
+    return "✅ 【回执】：处理群请求指令已发送。"
 
-@register_tool("get_group_list", "获取群列表", {"type": "object", "properties": {}})
-async def tool_get_group_list(ws, uid, platform, args, is_autonomous, extra_params=None):
-    if platform != "qq": return "❌ 微信不支持此操作"
-    if uid != str(MASTER_QQ): return "【拦截】：仅主人可查。"
-    await ws.send(json.dumps({"action": "get_group_list", "params": {}}))
-    return "✅ 【回执】：查询指令已发送。"
+# ==================== 4. 群管与群文件进阶 ====================
 
-@register_tool("get_group_member_list", "获取群成员列表", {"type": "object", "properties": {"group_id": {"type": "string"}}, "required": ["group_id"]})
-async def tool_get_group_member_list(ws, uid, platform, args, is_autonomous, extra_params=None):
-    if platform != "qq": return "❌ 微信不支持此操作"
-    await ws.send(json.dumps({"action": "get_group_member_list", "params": {"group_id": int(args.get("group_id", 0))}}))
-    return "✅ 【回执】：群成员查询指令已发送。"
-
-@register_tool("get_group_member_info", "获取群成员信息", {"type": "object", "properties": {"group_id": {"type": "string"}, "user_id": {"type": "string"}}, "required": ["group_id", "user_id"]})
-async def tool_get_group_member_info(ws, uid, platform, args, is_autonomous, extra_params=None):
-    if platform != "qq": return "❌ 微信不支持此操作"
-    await ws.send(json.dumps({"action": "get_group_member_info", "params": {"group_id": int(args.get("group_id", 0)), "user_id": int(args.get("user_id", 0))}}))
-    return "✅ 【回执】：群成员信息查询已发送。"
-
-@register_tool("get_msg", "获取单条消息详情", {"type": "object", "properties": {"message_id": {"type": "string"}}, "required": ["message_id"]})
-async def tool_get_msg(ws, uid, platform, args, is_autonomous, extra_params=None):
-    if platform != "qq": return "❌ 微信不支持此操作"
-    await ws.send(json.dumps({"action": "get_msg", "params": {"message_id": int(args.get("message_id", 0))}}))
-    return "✅ 【回执】：消息详情查询已发送。"
-
-@register_tool("get_forward_msg", "获取合并转发内容", {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]})
-async def tool_get_forward_msg(ws, uid, platform, args, is_autonomous, extra_params=None):
-    if platform != "qq": return "❌ 微信不支持此操作"
-    await ws.send(json.dumps({"action": "get_forward_msg", "params": {"id": args.get("id", "")}}))
-    return "✅ 【回执】：合并转发查询已发送。"
-
-# ==================== 4. 高危管理操作 ====================
-
-@register_tool("set_group_ban", "群禁言", {"type": "object", "properties": {"group_id": {"type": "string"}, "user_id": {"type": "string"}, "duration": {"type": "integer"}}, "required": ["group_id", "user_id", "duration"]})
+@register_tool("set_group_ban", "群单人禁言", {"type": "object", "properties": {"group_id": {"type": "string"}, "user_id": {"type": "string"}, "duration": {"type": "integer"}}, "required": ["group_id", "user_id", "duration"]})
 async def tool_set_group_ban(ws, uid, platform, args, is_autonomous, extra_params=None):
     if platform != "qq": return "❌ 微信不支持此操作"
     if is_autonomous: return "【漫游拒绝高危操作】"
     await ws.send(json.dumps({"action": "set_group_ban", "params": {"group_id": int(args.get("group_id", 0)), "user_id": int(args.get("user_id", 0)), "duration": args.get("duration", 0)}}))
     return "✅ 【回执】：禁言操作已执行。"
 
-@register_tool("set_group_whole_ban", "全员禁言开关", {"type": "object", "properties": {"group_id": {"type": "string"}, "enable": {"type": "boolean"}}, "required": ["group_id", "enable"]})
+@register_tool("set_group_whole_ban", "群全员禁言开关", {"type": "object", "properties": {"group_id": {"type": "string"}, "enable": {"type": "boolean"}}, "required": ["group_id", "enable"]})
 async def tool_set_group_whole_ban(ws, uid, platform, args, is_autonomous, extra_params=None):
     if platform != "qq": return "❌ 微信不支持此操作"
     if is_autonomous: return "【漫游拒绝高危操作】"
@@ -266,6 +208,24 @@ async def tool_set_group_admin(ws, uid, platform, args, is_autonomous, extra_par
     await ws.send(json.dumps({"action": "set_group_admin", "params": {"group_id": int(args.get("group_id", 0)), "user_id": int(args.get("user_id", 0)), "enable": args.get("enable", False)}}))
     return "✅ 【回执】：管理员设置已更新。"
 
+@register_tool("set_group_notice", "发送群公告", {"type": "object", "properties": {"group_id": {"type": "string"}, "content": {"type": "string"}}, "required": ["group_id", "content"]})
+async def tool_set_group_notice(ws, uid, platform, args, is_autonomous, extra_params=None):
+    if platform != "qq": return "❌ 微信不支持此操作"
+    await ws.send(json.dumps({"action": "_send_group_notice", "params": {"group_id": int(args.get("group_id", 0)), "content": args.get("content", "")}}))
+    return "✅ 【回执】：群公告发送指令已下发。"
+
+@register_tool("get_group_files", "获取群文件系统列表", {"type": "object", "properties": {"group_id": {"type": "string"}}, "required": ["group_id"]})
+async def tool_get_group_files(ws, uid, platform, args, is_autonomous, extra_params=None):
+    if platform != "qq": return "❌ 微信不支持此操作"
+    await ws.send(json.dumps({"action": "get_group_root_files", "params": {"group_id": int(args.get("group_id", 0))}}))
+    return "✅ 【回执】：群文件列表查询已下发。"
+
+@register_tool("set_essence_msg", "设置群精华消息", {"type": "object", "properties": {"message_id": {"type": "string"}}, "required": ["message_id"]})
+async def tool_set_essence_msg(ws, uid, platform, args, is_autonomous, extra_params=None):
+    if platform != "qq": return "❌ 微信不支持此操作"
+    await ws.send(json.dumps({"action": "set_essence_msg", "params": {"message_id": int(args.get("message_id", 0))}}))
+    return "✅ 【回执】：设置精华指令已下发。"
+
 @register_tool("leave_group", "退出群聊", {"type": "object", "properties": {"group_id": {"type": "string"}}, "required": ["group_id"]})
 async def tool_leave_group(ws, uid, platform, args, is_autonomous, extra_params=None):
     if platform != "qq": return "❌ 微信不支持此操作"
@@ -273,7 +233,75 @@ async def tool_leave_group(ws, uid, platform, args, is_autonomous, extra_params=
     await ws.send(json.dumps({"action": "set_group_leave", "params": {"group_id": int(args.get("group_id", 0))}}))
     return "✅ 【回执】：退群指令已执行。"
 
-# ==================== 5. 系统底座 ====================
+# ==================== 5. QQ空间进阶 ====================
+
+@register_tool("send_qzone_msg", "发布QQ空间说说。可设置权限：1=所有人, 4=好友, 64=仅自己。", {"type": "object", "properties": {
+    "content": {"type": "string", "description": "说说正文"},
+    "image_path": {"type": "string", "description": "（可选）本地绝对路径或网图URL"},
+    "ugc_right": {"type": "integer", "description": "权限：默认1"}
+}, "required": ["content"]})
+async def tool_send_qzone(ws, uid, platform, args, is_autonomous, extra_params=None):
+    if platform != "qq": return "❌ 微信平台严禁调用 Qzone 接口，你没有这个通道！"
+    
+    payload = {"action": "send_qzone_msg", "params": {"content": args.get("content", ""), "ugc_right": args.get("ugc_right", 1)}}
+    
+    img_path = args.get("image_path")
+    if img_path:
+        if not img_path.startswith("http"):
+            mapped_path = _map_path(img_path)
+            if os.path.exists(mapped_path):
+                with open(mapped_path, "rb") as f:
+                    payload["params"]["images"] = [f"base64://{base64.b64encode(f.read()).decode('utf-8')}"]
+            else:
+                return f"❌ 图片路径不存在: {img_path}"
+        else:
+            payload["params"]["images"] = [img_path]
+
+    await ws.send(json.dumps(payload))
+    return "⚠️ 【底层真实回执】：说说请求已单向投递，请主人自己核实。"
+
+@register_tool("delete_qzone_msg", "删除指定的QQ空间说说", {"type": "object", "properties": {"fid": {"type": "string", "description": "说说的唯一ID"}}, "required": ["fid"]})
+async def tool_delete_qzone_msg(ws, uid, platform, args, is_autonomous, extra_params=None):
+    if platform != "qq": return "❌ 微信不支持此操作"
+    if is_autonomous: return "【漫游拒绝高危操作】"
+    await ws.send(json.dumps({"action": "delete_qzone_msg", "params": {"fid": args.get("fid")}}))
+    return "✅ 【回执】：删除说说指令已下发。"
+
+# ==================== 6. 系统与档案查询 ====================
+
+@register_tool("get_login_info", "获取机器人登录信息", {"type": "object", "properties": {}})
+async def tool_get_login_info(ws, uid, platform, args, is_autonomous, extra_params=None):
+    if platform != "qq": return "❌ 微信不支持此操作"
+    await ws.send(json.dumps({"action": "get_login_info", "params": {}}))
+    return "✅ 【回执】：查询指令已发送。"
+
+@register_tool("get_friend_list", "获取好友列表", {"type": "object", "properties": {}})
+async def tool_get_friend_list(ws, uid, platform, args, is_autonomous, extra_params=None):
+    if platform != "qq": return "❌ 微信不支持此操作"
+    if uid != str(MASTER_QQ): return "【拦截】：仅主人可查。"
+    await ws.send(json.dumps({"action": "get_friend_list", "params": {}}))
+    return "✅ 【回执】：查询指令已发送。"
+
+@register_tool("get_group_list", "获取群列表", {"type": "object", "properties": {}})
+async def tool_get_group_list(ws, uid, platform, args, is_autonomous, extra_params=None):
+    if platform != "qq": return "❌ 微信不支持此操作"
+    if uid != str(MASTER_QQ): return "【拦截】：仅主人可查。"
+    await ws.send(json.dumps({"action": "get_group_list", "params": {}}))
+    return "✅ 【回执】：查询指令已发送。"
+
+@register_tool("get_group_member_list", "获取群成员列表", {"type": "object", "properties": {"group_id": {"type": "string"}}, "required": ["group_id"]})
+async def tool_get_group_member_list(ws, uid, platform, args, is_autonomous, extra_params=None):
+    if platform != "qq": return "❌ 微信不支持此操作"
+    await ws.send(json.dumps({"action": "get_group_member_list", "params": {"group_id": int(args.get("group_id", 0))}}))
+    return "✅ 【回执】：群成员查询指令已发送。"
+
+@register_tool("get_msg", "获取单条消息详情", {"type": "object", "properties": {"message_id": {"type": "string"}}, "required": ["message_id"]})
+async def tool_get_msg(ws, uid, platform, args, is_autonomous, extra_params=None):
+    if platform != "qq": return "❌ 微信不支持此操作"
+    await ws.send(json.dumps({"action": "get_msg", "params": {"message_id": int(args.get("message_id", 0))}}))
+    return "✅ 【回执】：消息详情查询已发送。"
+
+# ==================== 7. 底座与记忆 ====================
 
 @register_tool("run_python", "沙盒执行代码", {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]})
 async def tool_run_python(ws, uid, platform, args, is_autonomous, extra_params=None): return await run_python(args.get("code", ""))
